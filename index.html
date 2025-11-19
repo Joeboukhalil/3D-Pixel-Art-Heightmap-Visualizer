@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Heightmap Surface — Pixel Art Visualizer</title>
+<style>
+  body { margin: 0; overflow: hidden; background: #000; color: white; font-family: Arial, sans-serif; }
+  #controls { position: absolute; top: 70px; left: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 10; }
+  input, button { padding: 10px 15px; border: none; border-radius: 8px; cursor: pointer; }
+  input { background: #222; color: white; }
+  button { background: #0a84ff; color: white; }
+  h1 { position: absolute; top: 10px; left: 20px; margin: 0; }
+  h2 { position: absolute; top: 35px; left: 20px; font-size: 14px; color: #aaa; margin: 0; }
+</style>
+</head>
+<body>
+<h1>3D Heightmap Surface</h1>
+<h2>Pixel Art Visualizer</h2>
+
+<div id="controls">
+  <input type="file" id="imageInput" accept="image/*">
+  <button id="downloadBtn" disabled>Download 8 PNGs</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+let scene, camera, renderer, mesh, texture;
+
+// 8 angles: 4 diagonal, 4 top-down
+const angles = [
+  {polar: 45, azimuth: 45},{polar: 45, azimuth: 135},
+  {polar: 45, azimuth: 225},{polar: 45, azimuth: 315},
+  {polar: 90, azimuth: 0},{polar: 90, azimuth: 90},
+  {polar: 90, azimuth: 180},{polar: 90, azimuth: 270}
+];
+
+function initScene() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x000000);
+
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+  renderer = new THREE.WebGLRenderer({ antialias:true, preserveDrawingBuffer:true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const light = new THREE.DirectionalLight(0xffffff, 2);
+  light.position.set(1,1,1);
+  scene.add(light);
+
+  camera.position.set(3,3,3);
+  camera.lookAt(0,0,0);
+
+  window.addEventListener('resize', () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+  });
+
+  animate();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  if(mesh) mesh.rotation.z += 0.005;
+  renderer.render(scene, camera);
+}
+
+function setCameraFromAngle(angle) {
+  const phi = THREE.MathUtils.degToRad(90 - angle.polar);
+  const theta = THREE.MathUtils.degToRad(angle.azimuth);
+  const radius = 3;
+  camera.position.set(
+    radius*Math.sin(phi)*Math.cos(theta),
+    radius*Math.cos(phi),
+    radius*Math.sin(phi)*Math.sin(theta)
+  );
+  camera.lookAt(0,0,0);
+  camera.updateProjectionMatrix();
+}
+
+async function downloadAll8() {
+  if(!mesh || !texture) return;
+  const size = 1024;
+  renderer.setSize(size,size);
+
+  for(let i=0;i<angles.length;i++){
+    setCameraFromAngle(angles[i]);
+    renderer.render(scene,camera);
+    await new Promise(r=>setTimeout(r,50));
+    const link = document.createElement('a');
+    link.download = `surface_${i+1}.png`;
+    link.href = renderer.domElement.toDataURL('image/png');
+    link.click();
+    await new Promise(r=>setTimeout(r,50));
+  }
+
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+document.getElementById('imageInput').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if(!file) return;
+  const url = URL.createObjectURL(file);
+  const loader = new THREE.TextureLoader();
+  loader.load(url, tex => {
+    if(mesh) scene.remove(mesh);
+    texture = tex;
+
+    const geometry = new THREE.PlaneGeometry(5, 5, 128, 128);
+    const material = new THREE.MeshStandardMaterial({
+      map: texture,
+      displacementMap: texture,
+      displacementScale: 1,
+      color: 0xffffff
+    });
+
+    mesh = new THREE.Mesh(geometry, material);
+    mesh.rotation.x = -Math.PI/2.5;
+    scene.add(mesh);
+
+    document.getElementById('downloadBtn').disabled = false;
+  });
+});
+
+document.getElementById('downloadBtn').addEventListener('click', downloadAll8);
+
+initScene();
+</script>
+</body>
+</html>
